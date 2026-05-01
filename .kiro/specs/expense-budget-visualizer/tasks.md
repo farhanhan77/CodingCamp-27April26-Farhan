@@ -1,0 +1,269 @@
+ # Implementation Plan: Expense & Budget Visualizer
+
+## Overview
+
+Implement a standalone, no-build, no-dependency single-page app across three files (`index.html`, `css/style.css`, `javascript/script.js`). The implementation follows a strict "mutate → persist → render" cycle. Tasks are ordered so each step produces runnable, integrated code — no orphaned modules.
+
+## Tasks
+
+- [x] 1. Build the HTML skeleton (`index.html`)
+  - Replace the placeholder `<title>` with "Expense & Budget Visualizer"
+  - Add `<link>` to `css/style.css` and `<script defer>` to `javascript/script.js`
+  - Add the balance overview section: `#balance-overview` containing `#balance`, `#total-income`, `#total-expenses` elements
+  - Add the add-transaction form `#transaction-form` with fields for description, amount, category (`<select>`), type (`<select>`), and date; include a `<span class="field-error">` beneath each field and a submit button
+  - Add the filter controls section `#filter-controls` with category `<select>`, type `<select>`, and `<span id="transaction-count">`
+  - Add the transaction list `<ul id="transaction-list">` and its empty-state `<p id="list-empty">`
+  - Add the chart section: `<canvas id="chart-canvas">`, `<p id="chart-empty">`, and `<ul id="chart-legend">`
+  - Add the clear-all button `#clear-all-btn`
+  - Add the storage-warning banner `<div id="storage-warning" hidden>`
+  - Ensure all interactive elements have accessible labels (`<label for>`, `aria-label`, or `aria-live` as appropriate)
+  - _Requirements: 1.1, 2.1, 3.4, 5.4, 6.1, 6.4, 7.4, 8.1, 9.3, 9.4_
+
+- [x] 2. Write the CSS (`css/style.css`)
+  - [x] 2.1 Implement base layout and typography
+    - CSS custom properties for the color palette (income green, expense red, category colors, neutral grays)
+    - Responsive single-column layout for ≤ 600px; two-column layout for wider viewports
+    - No horizontal scroll from 320px to 2560px
+    - _Requirements: 9.1_
+  - [x] 2.2 Style the balance overview cards
+    - Three summary cards side-by-side (flex/grid), stacking on narrow viewports
+    - Positive balance → green text; negative → red; zero → neutral
+    - _Requirements: 1.1, 3.3_
+  - [x] 2.3 Style the add-transaction form
+    - All inputs and selects at minimum 44 × 44 CSS px touch target
+    - Inline `.field-error` spans styled in red, hidden by default
+    - _Requirements: 2.1, 2.3, 9.2_
+  - [x] 2.4 Style the transaction list
+    - Income rows visually distinct from expense rows (color class or left-border accent)
+    - Category badge pill styling
+    - Delete button meets 44 × 44 px touch target
+    - _Requirements: 3.2, 3.3, 4.1, 9.2_
+  - [x] 2.5 Style the chart section and legend
+    - Canvas centered, max-width constrained
+    - Legend swatches aligned with category labels
+    - Empty-state message centered
+    - _Requirements: 5.3, 5.4, 5.5_
+  - [x] 2.6 Style filter controls and storage warning banner
+    - Filter selects inline on wide viewports, stacked on narrow
+    - Storage warning banner prominent (yellow/amber background, full-width)
+    - _Requirements: 6.1, 7.4_
+  - [x] 2.7 Verify WCAG 2.1 Level AA color contrast for all text and interactive elements
+    - Check contrast ratios for all foreground/background color pairs defined in custom properties
+    - _Requirements: 9.4_
+
+- [x] 3. Implement the JavaScript core (`javascript/script.js`)
+  - [x] 3.1 Define constants and the state object
+    - `CATEGORIES`, `CATEGORY_COLORS`, `STORAGE_KEY` constants
+    - `state` object: `{ transactions: [], filter: { category: 'all', type: 'all' }, storageAvailable: true }`
+    - _Requirements: 2.1, 6.1_
+  - [x] 3.2 Implement the storage module
+    - `loadFromStorage()`: wraps `localStorage.getItem` + `JSON.parse` in `try/catch`; validates each item against the Transaction schema (discards items missing required fields); sets `state.storageAvailable = false` on error; returns `[]` on any failure
+    - `saveToStorage(transactions)`: wraps `localStorage.setItem` in `try/catch`; sets `state.storageAvailable = false` on error
+    - _Requirements: 7.1, 7.2, 7.3, 7.4_
+  - [x] 3.3 Write unit tests for the storage module
+    - Mock `localStorage.getItem` to throw → `storageAvailable` set to `false`, returns `[]`
+    - Mock `localStorage.setItem` to throw → `storageAvailable` set to `false`
+    - Corrupt JSON in storage → returns `[]`
+    - Items with missing required fields → discarded, valid items retained
+    - _Requirements: 7.4_
+  - [x] 3.4 Implement `DOMContentLoaded` bootstrap
+    - Call `loadFromStorage()`, assign result to `state.transactions`
+    - Call `bindEvents()`
+    - Call `render()`
+    - Show `#storage-warning` if `state.storageAvailable === false`
+    - _Requirements: 7.3_
+
+- [x] 4. Implement the render pipeline
+  - [x] 4.1 Implement `renderBalance()`
+    - Compute net balance, total income, total expenses from `state.transactions`
+    - Update `#balance`, `#total-income`, `#total-expenses` text content
+    - Apply positive/negative/zero CSS class to `#balance`
+    - _Requirements: 1.1, 1.2, 1.3, 1.4_
+  - [x] 4.2 Write property test for balance computation (Property 1)
+    - **Property 1: Balance Computation Correctness**
+    - **Validates: Requirements 1.2, 1.3, 4.3**
+    - Use `fc.array(transactionArb)` to generate random transaction arrays; assert net balance = Σ income − Σ expenses, total income = Σ income, total expenses = Σ expenses
+  - [x] 4.3 Implement `renderTransactionList()`
+    - Derive filtered list from `state.transactions` using `state.filter`
+    - Sort newest-first (by `date` desc, then `createdAt` desc for ties)
+    - Rebuild `#transaction-list` innerHTML; each `<li>` shows date, description, category badge, amount, delete button
+    - Apply income/expense CSS class to each row
+    - Show/hide `#list-empty` based on filtered count
+    - _Requirements: 3.1, 3.2, 3.3, 3.4, 4.1_
+  - [x] 4.4 Write property test for transaction list sort order (Property 6)
+    - **Property 6: Transaction List Sort Order**
+    - **Validates: Requirements 3.1**
+    - Use `fc.array(transactionArb, { minLength: 2 })` to generate arrays with varying dates; assert rendered order is newest-first with `createdAt` tiebreaking
+  - [x] 4.5 Write property test for transaction row completeness (Property 7)
+    - **Property 7: Transaction Row Completeness**
+    - **Validates: Requirements 3.2**
+    - Use `fc.array(transactionArb, { minLength: 1 })`; assert each rendered row contains description, amount, category, type indicator, and date
+  - [x] 4.6 Write property test for income/expense visual distinction (Property 8)
+    - **Property 8: Income/Expense Visual Distinction**
+    - **Validates: Requirements 3.3**
+    - Use `fc.tuple(incomeArb, expenseArb)`; assert income and expense rows have distinct CSS classes or attributes
+  - [x] 4.7 Write property test for delete control presence (Property 9)
+    - **Property 9: Delete Control Presence**
+    - **Validates: Requirements 4.1**
+    - Use `fc.array(transactionArb, { minLength: 1 })`; assert every rendered row contains exactly one delete control
+  - [x] 4.8 Implement `renderEmptyStates()`
+    - Show `#list-empty` when filtered transaction list is empty
+    - Show `#chart-empty` and hide `#chart-canvas` when there are no expense transactions
+    - _Requirements: 3.4, 5.4_
+  - [x] 4.9 Implement top-level `render()` coordinator
+    - Calls `renderBalance()`, `renderTransactionList()`, `renderChart()`, `renderFilterBadge()`, `renderEmptyStates()` in sequence
+    - _Requirements: 1.2, 3.1, 5.2_
+
+- [x] 5. Implement the spending chart
+  - [x] 5.1 Implement `drawDonutSegment(ctx, cx, cy, r, innerR, startAngle, endAngle, color)`
+    - Draws a single filled donut arc using Canvas 2D `arc()` and `arc()` (inner cutout via reverse arc)
+    - _Requirements: 5.1_
+  - [x] 5.2 Implement `renderChart()`
+    - Aggregate expense totals by category from `state.transactions`
+    - Clear canvas; if `canvas.getContext('2d')` returns `null`, show empty-state and return
+    - Draw donut segments proportional to each category's share of total expenses
+    - Draw percentage labels (category name + `%`) for each segment
+    - Rebuild `#chart-legend` with color swatches and category names
+    - _Requirements: 5.1, 5.2, 5.3, 5.5_
+  - [x] 5.3 Write property test for chart data aggregation (Property 11)
+    - **Property 11: Chart Data Aggregation Correctness**
+    - **Validates: Requirements 5.1, 5.2**
+    - Use `fc.array(expenseArb, { minLength: 1 })`; assert each category value = Σ amounts for that category, and Σ all category values = total expenses
+  - [x] 5.4 Write property test for chart rendering completeness (Property 12)
+    - **Property 12: Chart Rendering Completeness**
+    - **Validates: Requirements 5.3, 5.5**
+    - Use `fc.array(expenseArb, { minLength: 1 })`; assert percentage labels sum to ~100% and legend contains an entry per represented category
+  - [x] 5.5 Write unit tests for chart edge cases
+    - No expense transactions → `#chart-empty` shown, `#chart-canvas` hidden
+    - All expenses in one category → single full-circle segment, 100% label
+    - `getContext('2d')` returns `null` → empty-state shown, no throw
+    - _Requirements: 5.4_
+
+- [x] 6. Implement add-transaction form and validation
+  - [x] 6.1 Implement form validation logic
+    - `validateForm(formData)`: returns `{ valid: boolean, errors: { [field]: string } }`
+    - Validates: description non-empty after trim; amount > 0 and finite; category in CATEGORIES; type is 'income' or 'expense'; date is a valid ISO date string
+    - _Requirements: 2.3, 2.4_
+  - [x] 6.2 Write property test for missing-field validation (Property 3)
+    - **Property 3: Missing-Field Validation Rejects Submission**
+    - **Validates: Requirements 2.3**
+    - Use `fc.subarray(['description','amount','category','type','date'])` to pick fields to omit; assert `validateForm` returns `valid: false` and at least one error, and no transaction is added to state
+  - [x] 6.3 Write property test for invalid amount validation (Property 4)
+    - **Property 4: Invalid Amount Validation Rejects Submission**
+    - **Validates: Requirements 2.4**
+    - Use `fc.oneof(fc.constant(0), fc.float({ max: 0 }), fc.constant(NaN), fc.constant(-Infinity))`; assert `validateForm` returns `valid: false` with an amount error
+  - [x] 6.4 Implement `addTransaction(data)`
+    - Generates a UUID via `crypto.randomUUID()` (with `Date.now()`-based fallback)
+    - Prepends new Transaction to `state.transactions`
+    - Calls `saveToStorage(state.transactions)`
+    - Calls `render()`
+    - _Requirements: 2.2, 7.1_
+  - [x] 6.5 Implement form submit event handler
+    - Reads all field values, calls `validateForm`
+    - On failure: populate `.field-error` spans, focus first invalid field, abort
+    - On success: call `addTransaction`, clear all fields, reset `.field-error` spans, re-focus description field, set date field to today
+    - _Requirements: 2.2, 2.3, 2.4, 2.5_
+  - [x] 6.6 Write property test for transaction add round-trip (Property 2)
+    - **Property 2: Transaction Add Round-Trip**
+    - **Validates: Requirements 2.2, 7.1**
+    - Use `fc.record({ description: fc.string({ minLength: 1 }), amount: fc.float({ min: 0.01 }), ... })`; assert transaction appears in `state.transactions` and in `localStorage` after `addTransaction`
+  - [x] 6.7 Write property test for form reset after successful submission (Property 5)
+    - **Property 5: Form Reset After Successful Submission**
+    - **Validates: Requirements 2.5**
+    - Use `transactionInputArb`; after successful submit, assert all form fields are cleared or at default values
+
+- [x] 7. Implement delete transaction and balance update
+  - [x] 7.1 Implement `deleteTransaction(id)`
+    - Filters `state.transactions` to remove the item with matching `id`
+    - Calls `saveToStorage(state.transactions)`
+    - Calls `render()`
+    - _Requirements: 4.2, 7.2_
+  - [x] 7.2 Wire delete button click handler in `renderTransactionList()`
+    - Each delete button's `data-id` attribute holds the transaction id
+    - Click handler calls `deleteTransaction(data-id)`
+    - _Requirements: 4.1, 4.2_
+  - [x] 7.3 Write property test for transaction delete round-trip (Property 10)
+    - **Property 10: Transaction Delete Round-Trip**
+    - **Validates: Requirements 4.2, 7.2**
+    - Use `fc.array(transactionArb, { minLength: 1 })` + random index; after `deleteTransaction`, assert target absent from `state.transactions` and `localStorage`, all others unchanged
+  - [x] 7.4 Write unit tests for delete edge cases
+    - Deleting the only transaction → list empty, balance zero, empty-state shown
+    - Deleting a non-existent id → state unchanged
+    - _Requirements: 4.2, 4.3_
+
+- [x] 8. Checkpoint — core CRUD complete
+  - Ensure all tests pass, ask the user if questions arise.
+  - Verify: add a transaction → appears in list and localStorage; delete it → removed from both; balance updates correctly; chart updates.
+
+- [x] 9. Implement filter controls
+  - [x] 9.1 Implement `applyFilter()`
+    - Reads category and type `<select>` values
+    - Updates `state.filter.category` and `state.filter.type`
+    - Calls `render()`
+    - _Requirements: 6.1, 6.2, 6.3_
+  - [x] 9.2 Implement `renderFilterBadge()`
+    - Counts transactions in `state.transactions` that satisfy current `state.filter`
+    - Updates `#transaction-count` text to "Showing N transaction(s)"
+    - _Requirements: 6.4_
+  - [x] 9.3 Wire `change` event listeners on both filter `<select>` elements to call `applyFilter()`
+    - _Requirements: 6.1_
+  - [x] 9.4 Write property test for filter correctness (Property 13)
+    - **Property 13: Filter Correctness**
+    - **Validates: Requirements 6.2, 6.3**
+    - Use `fc.array(transactionArb)` + `filterStateArb`; assert every displayed transaction satisfies all active filter criteria and no matching transaction is omitted; assert 'all' filter shows all transactions
+  - [x] 9.5 Write property test for transaction count accuracy (Property 14)
+    - **Property 14: Transaction Count Accuracy**
+    - **Validates: Requirements 6.4**
+    - Use `fc.array(transactionArb)` + `filterStateArb`; assert displayed count equals number of visible transactions
+
+- [x] 10. Implement clear-all data
+  - [x] 10.1 Implement `clearAllTransactions()`
+    - Calls `window.confirm()` with a descriptive message
+    - On confirm: sets `state.transactions = []`, calls `localStorage.removeItem(STORAGE_KEY)`, calls `render()`
+    - On cancel: no-op
+    - _Requirements: 8.1, 8.2, 8.3, 8.4_
+  - [x] 10.2 Wire `#clear-all-btn` click handler to `clearAllTransactions()`
+    - _Requirements: 8.1_
+  - [x] 10.3 Write property test for clear-all empties state (Property 16)
+    - **Property 16: Clear-All Empties All State**
+    - **Validates: Requirements 8.3**
+    - Use `fc.array(transactionArb, { minLength: 1 })`; mock `window.confirm` returning `true`; assert `state.transactions` is empty, `localStorage` has no transaction data, balance/income/expenses all display zero
+  - [x] 10.4 Write property test for cancel clear-all preserves state (Property 17)
+    - **Property 17: Cancel Clear-All Preserves State**
+    - **Validates: Requirements 8.4**
+    - Use `fc.array(transactionArb, { minLength: 1 })`; mock `window.confirm` returning `false`; assert state, localStorage, and all displayed values are completely unchanged
+
+- [x] 11. Implement data persistence and app load
+  - [x] 11.1 Verify `loadFromStorage()` schema validation
+    - After `DOMContentLoaded`, confirm items missing any of `id`, `description`, `amount`, `category`, `type`, `date` are silently discarded
+    - _Requirements: 7.3, 7.4_
+  - [x] 11.2 Write property test for app load restores full state (Property 15)
+    - **Property 15: App Load Restores Full State**
+    - **Validates: Requirements 7.3**
+    - Use `fc.array(transactionArb)`; write dataset to mock localStorage, simulate `loadFromStorage()` + `render()`; assert transaction list, balance, income total, expense total, and chart match expected values
+  - [x] 11.3 Write unit tests for localStorage error handling
+    - `localStorage.getItem` throws → `storageAvailable = false`, `#storage-warning` shown, app starts with empty list
+    - `localStorage.setItem` throws on save → `storageAvailable = false`, `#storage-warning` shown
+    - Corrupt JSON string in storage → returns `[]`, app starts empty
+    - _Requirements: 7.4_
+
+- [x] 12. Wire all event listeners in `bindEvents()`
+  - Attach form `submit` → form submit handler
+  - Attach `#filter-category` and `#filter-type` `change` → `applyFilter()`
+  - Attach `#clear-all-btn` `click` → `clearAllTransactions()`
+  - Delete buttons are wired inside `renderTransactionList()` (event delegation or per-element)
+  - _Requirements: 2.2, 4.2, 6.1, 8.1_
+
+- [x] 13. Final checkpoint — full integration
+  - Ensure all tests pass, ask the user if questions arise.
+  - Verify the complete "mutate → persist → render" cycle works end-to-end: add, filter, delete, clear-all, reload.
+
+## Notes
+
+- Tasks marked with `*` are optional and can be skipped for a faster MVP
+- Property-based tests use **fast-check** (`npm install --save-dev fast-check` or CDN import for browser-based testing)
+- Each property test must include the tag comment: `// Feature: expense-budget-visualizer, Property N: <property_text>`
+- Property tests run a minimum of 100 iterations each
+- Unit tests cover edge cases and error conditions that properties do not exhaustively cover
+- The app must remain openable via `file://` — avoid any Node.js-only APIs in `script.js`
+- All 17 correctness properties from the design document are covered by property test sub-tasks
